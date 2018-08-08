@@ -29,8 +29,8 @@ while True:
                 for stop_time_update in trip_update.stop_time_update:
                     if stop_time_update.stop_id == r_77_northbound:
                         trips_in_feed[trip.trip_id] = datetime.fromtimestamp(stop_time_update.arrival.time)
-        for key, value in pending_trips.items():
-            if key not in trips_in_feed:  # todo very rough method to estimate train arrival - verify actual timestamp
+        for key, value in sorted(pending_trips.items(), key=lambda kv: kv[1]):  # order by arrival time ascending
+            if key not in trips_in_feed and value > most_recent_trip:  # todo better handling for order mix-ups
                 print('{}: Northbound R train {} arrived at 77th St station, {:.2f} minutes after most recent train.'
                       .format(value, key, (value-most_recent_trip).seconds / 60))
                 most_recent_trip = value  # todo technically a race condition although unlikely to be met
