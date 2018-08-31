@@ -1,7 +1,8 @@
 import time
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from datetime import datetime
 
+from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2
 
 import urllib.request
@@ -17,7 +18,7 @@ frequency = 30.0
 
 
 pending_trains = {}
-arrived_trains = []
+arrived_trains = OrderedDict()
 
 
 def print_with_time(*msg):
@@ -34,14 +35,14 @@ while True:
         response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
         feed.ParseFromString(response.read())
         trips_in_feed = {}
+        trips_to_delete = set()
         for entity in feed.entity:
             # VehiclePosition type messages let you know where the train actually is. since train id's can change before
             # they leave the terminal (since id's are based on departure time), ignore any trains that haven't started.
-            # todo this relies on current behavior of vehicle updates coming after train status updates
             if entity.HasField('vehicle'):
                 trip = entity.vehicle.trip
                 if is_northbound_r_trip(trip) and entity.vehicle.current_stop_sequence == 0:
-                    del trips_in_feed[trip.trip_id]
+                    trips_to_delete.add(trip.trip_id)
             # TripUpdate type messages give estimated arrival times for future stops on a given train.
             elif entity.HasField('trip_update'):
                 trip_update = entity.trip_update
@@ -52,24 +53,30 @@ while True:
                             trips_in_feed[trip.trip_id] = datetime.fromtimestamp(stop_time_update.arrival.time)
             else:
                 print_with_time('Unknown entity!', entity)
+        for trip_id in trips_to_delete:
+            if trip_id in trips_in_feed:
+                del trips_in_feed[trip_id]
         for key, value in sorted(pending_trains.items(), key=lambda kv: kv[1]):  # order by arrival time ascending
             if key not in trips_in_feed:
-                arrived_trains.append(Train(key, value))  # todo technically a race condition though unlikely to be met
-                if len(arrived_trains) == 1:  # don't post first train since we don't have headway
-                    continue
-
-                most_recent_train_time = arrived_trains[-2].time
-                if value < most_recent_train_time:  # todo better handling for order mix-ups
-                    print_with_time('Out of order! Train {} at {} before most recent at {}'
-                                    .format(key, value, most_recent_train_time))
-                    # todo do we want to keep this in list of arrived trains?
-                    continue
-
-                print_with_time('Northbound R train {} arrived at 77th St station at {}, {:.2f} minutes after most '
-                                'recent train.'.format(key, value, (value-most_recent_train_time).seconds / 60))
+                if len(arrived_trains) == 0:  # don't have headway for first train
+                    print_with_time('Northbound R train {} arrived at 77th St station at {}'.format(key, value))
+                else:
+                    previous_arrival = arrived_trains[next(reversed(arrived_trains))]
+                    if key in arrived_trains:  # train info got updated after we thought it left the station
+                        print_with_time('Train {} arrival time updated from {} to {}'
+                                        .format(key, arrived_trains[key], value))
+                    elif value < previous_arrival:  # todo better handling for order mix-ups
+                        print_with_time('Out of order! Train {} at {} before most recent at {}'
+                                        .format(key, value, previous_arrival))
+                    else:
+                        print_with_time('Northbound R train {} arrived at 77th St station at {}, {:.2f} minutes after '
+                                        'most recent train.'.format(key, value, (value-previous_arrival).seconds / 60))
+                arrived_trains[key] = value
         pending_trains = trips_in_feed
-
-    except:  # don't care what happens, sleep and try again - todo maybe be a bit smarter
-        pass
+    except DecodeError as e:
+        print_with_time('Decode error!', e)
+        # todo print what the actual problem was
+    except TimeoutError as e:
+        print_with_time('Timeout error!', e)
 
     time.sleep(frequency)
