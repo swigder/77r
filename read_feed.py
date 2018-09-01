@@ -11,14 +11,8 @@ import urllib.request
 Train = namedtuple('Train', ['id', 'time'])
 
 
-with open('api.key', 'r') as f:
-    api_key = f.read()
 r_77_northbound = 'R43N'
 frequency = 30.0
-
-
-pending_trains = {}
-arrived_trains = OrderedDict()
 
 
 def print_with_time(*msg):
@@ -29,11 +23,11 @@ def is_northbound_r_trip(trip):
     return trip.route_id == 'R' and trip.trip_id.endswith('N')
 
 
-while True:
-    try:
-        feed = gtfs_realtime_pb2.FeedMessage()
-        response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
-        feed.ParseFromString(response.read())
+class FeedProcessor:
+    pending_trains = {}
+    arrived_trains = OrderedDict()
+
+    def process_feed(self, feed):
         trips_in_feed = {}
         trips_to_delete = set()
         for entity in feed.entity:
@@ -56,27 +50,43 @@ while True:
         for trip_id in trips_to_delete:
             if trip_id in trips_in_feed:
                 del trips_in_feed[trip_id]
-        for key, value in sorted(pending_trains.items(), key=lambda kv: kv[1]):  # order by arrival time ascending
+        for key, value in sorted(self.pending_trains.items(), key=lambda kv: kv[1]):  # order by arrival time ascending
             if key not in trips_in_feed:
-                if len(arrived_trains) == 0:  # don't have headway for first train
+                if len(self.arrived_trains) == 0:  # don't have headway for first train
                     print_with_time('Northbound R train {} arrived at 77th St station at {}'.format(key, value))
                 else:
-                    previous_arrival = arrived_trains[next(reversed(arrived_trains))]
-                    if key in arrived_trains:  # train info got updated after we thought it left the station
+                    previous_arrival = self.arrived_trains[next(reversed(self.arrived_trains))]
+                    if key in self.arrived_trains:  # train info got updated after we thought it left the station
                         print_with_time('Train {} arrival time updated from {} to {}'
-                                        .format(key, arrived_trains[key], value))
+                                        .format(key, self.arrived_trains[key], value))
                     elif value < previous_arrival:  # todo better handling for order mix-ups
                         print_with_time('Out of order! Train {} at {} before most recent at {}'
                                         .format(key, value, previous_arrival))
                     else:
                         print_with_time('Northbound R train {} arrived at 77th St station at {}, {:.2f} minutes after '
-                                        'most recent train.'.format(key, value, (value-previous_arrival).seconds / 60))
-                arrived_trains[key] = value
-        pending_trains = trips_in_feed
-    except DecodeError as e:
-        print_with_time('Decode error!', e)
-        # todo print what the actual problem was
-    except TimeoutError as e:
-        print_with_time('Timeout error!', e)
+                                        'most recent train.'.format(key, value,
+                                                                    (value - previous_arrival).seconds / 60))
+                self.arrived_trains[key] = value
+        self.pending_trains = trips_in_feed
 
-    time.sleep(frequency)
+
+if __name__ == '__main__':
+    with open('api.key', 'r') as f:
+        api_key = f.read()
+
+    feed_processor = FeedProcessor()
+
+    while True:
+        try:
+            feed = gtfs_realtime_pb2.FeedMessage()
+            response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
+            feed.ParseFromString(response.read())
+            feed_processor.process_feed(feed)
+        except DecodeError as e:
+            print_with_time('Decode error!', e)
+            # todo print what the actual problem was
+        except TimeoutError as e:
+            print_with_time('Timeout error!', e)
+
+        time.sleep(frequency)
+
