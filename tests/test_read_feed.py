@@ -29,6 +29,6 @@ def test_feed_processor():
             newly_arrived_trains = feed_processor.find_arrived_trains_in_feed(feed)
             filename = os.path.split(filepath)[1]
             if filename not in changes:
-                assert len(newly_arrived_trains) == 0
+                assert len(newly_arrived_trains) == 0, filename
             else:
-                assert len(newly_arrived_trains) == len(changes[filename])
+                assert len(newly_arrived_trains) == len(changes[filename]), filename

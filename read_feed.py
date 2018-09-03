@@ -11,7 +11,8 @@ import urllib.request
 Train = namedtuple('Train', ['id', 'time'])
 
 
-r_77_northbound = 'R43N'
+R_77_N_STOP_NAME = 'R43N'
+R_77_N_STOP_NUMBER = 3
 frequency = 30.0  # seconds
 
 
@@ -24,40 +25,21 @@ def is_northbound_r_trip(trip):
 
 
 class FeedProcessor:
-    pending_trains = {}
     arrived_trains = OrderedDict()
 
     def find_arrived_trains_in_feed(self, current_feed):
         arrived_trains_in_feed = {}
-        trips_in_feed = {}
-        trips_to_delete = set()
         for entity in current_feed.entity:
-            # VehiclePosition type messages let you know where the train actually is. since train id's can change before
-            # they leave the terminal (since id's are based on departure time), ignore any trains that haven't started.
+            # VehiclePosition type messages let you know where the train actually is.
             if entity.HasField('vehicle'):
-                trip = entity.vehicle.trip
-                if is_northbound_r_trip(trip) and entity.vehicle.current_stop_sequence == 0:
-                    trips_to_delete.add(trip.trip_id)
-            # TripUpdate type messages give estimated arrival times for future stops on a given train.
-            elif entity.HasField('trip_update'):
-                trip_update = entity.trip_update
-                trip = trip_update.trip
-                if is_northbound_r_trip(trip):
-                    for stop_time_update in trip_update.stop_time_update:
-                        if stop_time_update.stop_id == r_77_northbound:
-                            trips_in_feed[trip.trip_id] = datetime.fromtimestamp(stop_time_update.arrival.time)
-            else:
-                print_with_time('Unknown entity!', entity)
-        for trip_id in trips_to_delete:
-            if trip_id in trips_in_feed:
-                del trips_in_feed[trip_id]
-        # find trains that had station arrival times in previous feed but not in current feed - those are the trains
-        # that have arrived
-        for key, value in self.pending_trains.items():
-            if key not in trips_in_feed:
-                arrived_trains_in_feed[key] = value
-                self.arrived_trains[key] = value
-        self.pending_trains = trips_in_feed
+                vehicle, trip = entity.vehicle, entity.vehicle.trip
+                if is_northbound_r_trip(trip) and \
+                        vehicle.current_stop_sequence == R_77_N_STOP_NUMBER and \
+                        vehicle.current_status == gtfs_realtime_pb2.VehiclePosition.STOPPED_AT:
+                    if trip.trip_id not in self.arrived_trains:  # resilient against repeat feeds / long dwell times
+                        arrived_trains_in_feed[trip.trip_id] = datetime.fromtimestamp(entity.vehicle.timestamp)
+            # todo handle short dwell times (i.e., no feed where STOPPED_AT R_77_N_STOP_NUMBER) using former approach
+        self.arrived_trains.update(arrived_trains_in_feed)
         return arrived_trains_in_feed
 
     def print_arrived_trains(self, trains):
