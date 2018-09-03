@@ -12,7 +12,7 @@ Train = namedtuple('Train', ['id', 'time'])
 
 
 r_77_northbound = 'R43N'
-frequency = 30.0
+frequency = 30.0  # seconds
 
 
 def print_with_time(*msg):
