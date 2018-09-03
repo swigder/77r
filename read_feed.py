@@ -27,10 +27,11 @@ class FeedProcessor:
     pending_trains = {}
     arrived_trains = OrderedDict()
 
-    def process_feed(self, feed):
+    def find_arrived_trains_in_feed(self, current_feed):
+        arrived_trains_in_feed = {}
         trips_in_feed = {}
         trips_to_delete = set()
-        for entity in feed.entity:
+        for entity in current_feed.entity:
             # VehiclePosition type messages let you know where the train actually is. since train id's can change before
             # they leave the terminal (since id's are based on departure time), ignore any trains that haven't started.
             if entity.HasField('vehicle'):
@@ -50,24 +51,31 @@ class FeedProcessor:
         for trip_id in trips_to_delete:
             if trip_id in trips_in_feed:
                 del trips_in_feed[trip_id]
-        for key, value in sorted(self.pending_trains.items(), key=lambda kv: kv[1]):  # order by arrival time ascending
+        # find trains that had station arrival times in previous feed but not in current feed - those are the trains
+        # that have arrived
+        for key, value in self.pending_trains.items():
             if key not in trips_in_feed:
-                if len(self.arrived_trains) == 0:  # don't have headway for first train
-                    print_with_time('Northbound R train {} arrived at 77th St station at {}'.format(key, value))
-                else:
-                    previous_arrival = self.arrived_trains[next(reversed(self.arrived_trains))]
-                    if key in self.arrived_trains:  # train info got updated after we thought it left the station
-                        print_with_time('Train {} arrival time updated from {} to {}'
-                                        .format(key, self.arrived_trains[key], value))
-                    elif value < previous_arrival:  # todo better handling for order mix-ups
-                        print_with_time('Out of order! Train {} at {} before most recent at {}'
-                                        .format(key, value, previous_arrival))
-                    else:
-                        print_with_time('Northbound R train {} arrived at 77th St station at {}, {:.2f} minutes after '
-                                        'most recent train.'.format(key, value,
-                                                                    (value - previous_arrival).seconds / 60))
+                arrived_trains_in_feed[key] = value
                 self.arrived_trains[key] = value
         self.pending_trains = trips_in_feed
+        return arrived_trains_in_feed
+
+    def print_arrived_trains(self, trains):
+        for key, value in sorted(trains.items(), key=lambda kv: kv[1]):  # order by arrival time ascend
+            if len(self.arrived_trains) == 0:  # don't have headway for first train
+                print_with_time('Northbound R train {} arrived at 77th St station at {}'.format(key, value))
+            else:
+                previous_arrival = self.arrived_trains[next(reversed(self.arrived_trains))]
+                if key in self.arrived_trains:  # train info got updated after we thought it left the station
+                    print_with_time('Train {} arrival time updated from {} to {}'
+                                    .format(key, self.arrived_trains[key], value))
+                elif value < previous_arrival:  # todo better handling for order mix-ups
+                    print_with_time('Out of order! Train {} at {} before most recent at {}'
+                                    .format(key, value, previous_arrival))
+                else:
+                    print_with_time('Northbound R train {} arrived at 77th St station at {}, {:.2f} minutes after '
+                                    'most recent train.'.format(key, value,
+                                                                (value - previous_arrival).seconds / 60))
 
 
 if __name__ == '__main__':
@@ -80,8 +88,10 @@ if __name__ == '__main__':
         try:
             feed = gtfs_realtime_pb2.FeedMessage()
             response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
+            print('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
             feed.ParseFromString(response.read())
-            feed_processor.process_feed(feed)
+            newly_arrived_trains = feed_processor.find_arrived_trains_in_feed(feed)
+            feed_processor.print_arrived_trains(newly_arrived_trains)
         except DecodeError as e:
             print_with_time('Decode error!', e)
             # todo print what the actual problem was
