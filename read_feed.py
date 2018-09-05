@@ -26,6 +26,7 @@ def is_northbound_r_trip(trip):
 
 class FeedProcessor:
     arrived_trains = OrderedDict()
+    alerted_trains = set()
 
     def find_arrived_trains_in_feed(self, current_feed):
         arrived_trains_in_feed = {}
@@ -33,25 +34,28 @@ class FeedProcessor:
             # VehiclePosition type messages let you know where the train actually is.
             if entity.HasField('vehicle'):
                 vehicle, trip = entity.vehicle, entity.vehicle.trip
-                if is_northbound_r_trip(trip) and \
-                        vehicle.current_stop_sequence == R_77_N_STOP_NUMBER and \
-                        vehicle.current_status == gtfs_realtime_pb2.VehiclePosition.STOPPED_AT:
-                    if trip.trip_id not in self.arrived_trains:  # resilient against repeat feeds / long dwell times
-                        arrived_trains_in_feed[trip.trip_id] = datetime.fromtimestamp(entity.vehicle.timestamp)
+                if is_northbound_r_trip(trip):
+                    if vehicle.current_stop_sequence == R_77_N_STOP_NUMBER and \
+                            vehicle.current_status == gtfs_realtime_pb2.VehiclePosition.STOPPED_AT:
+                        if trip.trip_id not in self.arrived_trains:  # resilient against repeat feeds / long dwell times
+                            arrived_trains_in_feed[trip.trip_id] = datetime.fromtimestamp(entity.vehicle.timestamp)
+                    elif vehicle.current_stop_sequence > R_77_N_STOP_NUMBER and \
+                            trip.trip_id not in self.arrived_trains and \
+                            trip.trip_id not in self.alerted_trains:
+                        print_with_time('Train {} currently at stop {} was never marked as arrived'
+                                        .format(trip.trip_id, vehicle.current_stop_sequence))
+                        self.alerted_trains.add(trip.trip_id)
             # todo handle short dwell times (i.e., no feed where STOPPED_AT R_77_N_STOP_NUMBER) using former approach
         self.arrived_trains.update(arrived_trains_in_feed)
         return arrived_trains_in_feed
 
     def print_arrived_trains(self, trains):
         for key, value in sorted(trains.items(), key=lambda kv: kv[1]):  # order by arrival time ascend
-            if len(self.arrived_trains) == 0:  # don't have headway for first train
+            if len(self.arrived_trains) == 1:  # don't have headway for first train
                 print_with_time('Northbound R train {} arrived at 77th St station at {}'.format(key, value))
             else:
-                previous_arrival = self.arrived_trains[next(reversed(self.arrived_trains))]
-                if key in self.arrived_trains:  # train info got updated after we thought it left the station
-                    print_with_time('Train {} arrival time updated from {} to {}'
-                                    .format(key, self.arrived_trains[key], value))
-                elif value < previous_arrival:  # todo better handling for order mix-ups
+                previous_arrival = self.arrived_trains[list(self.arrived_trains)[-2]]
+                if value < previous_arrival:  # todo better handling for order mix-ups
                     print_with_time('Out of order! Train {} at {} before most recent at {}'
                                     .format(key, value, previous_arrival))
                 else:
@@ -70,7 +74,6 @@ if __name__ == '__main__':
         try:
             feed = gtfs_realtime_pb2.FeedMessage()
             response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
-            print('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
             feed.ParseFromString(response.read())
             newly_arrived_trains = feed_processor.find_arrived_trains_in_feed(feed)
             feed_processor.print_arrived_trains(newly_arrived_trains)

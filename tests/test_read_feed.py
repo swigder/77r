@@ -27,6 +27,7 @@ def test_feed_processor():
             feed = gtfs_realtime_pb2.FeedMessage()
             Merge(f.read(), feed)
             newly_arrived_trains = feed_processor.find_arrived_trains_in_feed(feed)
+            feed_processor.print_arrived_trains(newly_arrived_trains)
             filename = os.path.split(filepath)[1]
             if filename not in changes:
                 assert len(newly_arrived_trains) == 0, filename
