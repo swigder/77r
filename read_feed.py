@@ -5,6 +5,8 @@ from datetime import datetime
 from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2
 
+from tinydb import TinyDB
+
 import urllib.request
 
 
@@ -13,7 +15,9 @@ Train = namedtuple('Train', ['id', 'time'])
 
 R_77_N_STOP_NAME = 'R43N'
 R_77_N_STOP_NUMBER = 3
-frequency = 30.0  # seconds
+
+POLL_FREQUENCY = 30.0  # seconds
+PATH_TO_DATA_STORE = 'arrived_trains.json'
 
 
 def print_with_time(*msg):
@@ -26,7 +30,6 @@ def is_northbound_r_trip(trip):
 
 class FeedProcessor:
     arrived_trains = OrderedDict()
-    alerted_trains = set()
 
     def find_arrived_trains_in_feed(self, current_feed):
         arrived_trains_in_feed = {}
@@ -39,14 +42,10 @@ class FeedProcessor:
                             vehicle.current_status == gtfs_realtime_pb2.VehiclePosition.STOPPED_AT:
                         if trip.trip_id not in self.arrived_trains:  # resilient against repeat feeds / long dwell times
                             arrived_trains_in_feed[trip.trip_id] = datetime.fromtimestamp(entity.vehicle.timestamp)
-                    elif vehicle.current_stop_sequence > R_77_N_STOP_NUMBER and \
-                            trip.trip_id not in self.arrived_trains and \
-                            trip.trip_id not in self.alerted_trains:
-                        print_with_time('Train {} currently at stop {} was never marked as arrived'
-                                        .format(trip.trip_id, vehicle.current_stop_sequence))
-                        self.alerted_trains.add(trip.trip_id)
             # todo handle short dwell times (i.e., no feed where STOPPED_AT R_77_N_STOP_NUMBER) using former approach
         self.arrived_trains.update(arrived_trains_in_feed)
+        for train, train_time in arrived_trains_in_feed.items():
+            arrived_trains_db.insert({'train': train, 'time': train_time.isoformat()})
         return arrived_trains_in_feed
 
     def print_arrived_trains(self, trains):
@@ -69,6 +68,7 @@ if __name__ == '__main__':
         api_key = f.read()
 
     feed_processor = FeedProcessor()
+    arrived_trains_db = TinyDB(PATH_TO_DATA_STORE)
 
     while True:
         try:
@@ -83,5 +83,5 @@ if __name__ == '__main__':
         except TimeoutError as e:
             print_with_time('Timeout error!', e)
 
-        time.sleep(frequency)
+        time.sleep(POLL_FREQUENCY)
 
