@@ -9,6 +9,7 @@ from tinydb import TinyDB
 
 import urllib.request
 
+from util import ExpiringSet
 
 Train = namedtuple('Train', ['id', 'time'])
 
@@ -30,6 +31,8 @@ def is_northbound_r_trip(trip):
 
 class FeedProcessor:
     arrived_trains = OrderedDict()
+    # id unique per day, so remove ids after they can be presumed to have finished their run
+    alerted_trains = ExpiringSet(expiration_seconds=60 * 60 * 4)
 
     def find_arrived_trains_in_feed(self, current_feed):
         arrived_trains_in_feed = {}
@@ -42,6 +45,12 @@ class FeedProcessor:
                             vehicle.current_status == gtfs_realtime_pb2.VehiclePosition.STOPPED_AT:
                         if trip.trip_id not in self.arrived_trains:  # resilient against repeat feeds / long dwell times
                             arrived_trains_in_feed[trip.trip_id] = datetime.fromtimestamp(entity.vehicle.timestamp)
+                    elif vehicle.current_stop_sequence > R_77_N_STOP_NUMBER and \
+                            trip.trip_id not in self.arrived_trains and \
+                            trip.trip_id not in self.alerted_trains:
+                        print_with_time('Train {} currently at stop {} was never marked as arrived'
+                                        .format(trip.trip_id, vehicle.current_stop_sequence))
+                        self.alerted_trains.add(trip.trip_id)
             # todo handle short dwell times (i.e., no feed where STOPPED_AT R_77_N_STOP_NUMBER) using former approach
         self.arrived_trains.update(arrived_trains_in_feed)
         for train, train_time in arrived_trains_in_feed.items():
