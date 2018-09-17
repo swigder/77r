@@ -22,3 +22,8 @@ class ExpiringSet:
             else:
                 break  # we're using ordered dict
         return item in self.items
+
+
+def print_with_time(*msg):
+    print(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), *msg)
+

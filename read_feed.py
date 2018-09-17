@@ -8,7 +8,7 @@ from google.transit import gtfs_realtime_pb2
 from tinydb import TinyDB
 
 from mta_data_util import download_feed, is_northbound_r_trip
-from util import ExpiringSet
+from util import ExpiringSet, print_with_time
 
 Train = namedtuple('Train', ['id', 'time'])
 
@@ -18,10 +18,6 @@ R_77_N_STOP_NUMBER = 3
 
 POLL_FREQUENCY = 30.0  # seconds
 PATH_TO_DATA_STORE = 'arrived_trains.json'
-
-
-def print_with_time(*msg):
-    print(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), *msg)
 
 
 class FeedProcessor:
