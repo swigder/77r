@@ -7,8 +7,7 @@ from google.transit import gtfs_realtime_pb2
 
 from tinydb import TinyDB
 
-import urllib.request
-
+from mta_data_util import download_feed, is_northbound_r_trip
 from util import ExpiringSet
 
 Train = namedtuple('Train', ['id', 'time'])
@@ -23,10 +22,6 @@ PATH_TO_DATA_STORE = 'arrived_trains.json'
 
 def print_with_time(*msg):
     print(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), *msg)
-
-
-def is_northbound_r_trip(trip):
-    return trip.route_id == 'R' and trip.trip_id.endswith('N')
 
 
 class FeedProcessor:
@@ -53,8 +48,6 @@ class FeedProcessor:
                         self.alerted_trains.add(trip.trip_id)
             # todo handle short dwell times (i.e., no feed where STOPPED_AT R_77_N_STOP_NUMBER) using former approach
         self.arrived_trains.update(arrived_trains_in_feed)
-        for train, train_time in arrived_trains_in_feed.items():
-            arrived_trains_db.insert({'train': train, 'time': train_time.isoformat()})
         return arrived_trains_in_feed
 
     def print_arrived_trains(self, trains):
@@ -81,10 +74,10 @@ if __name__ == '__main__':
 
     while True:
         try:
-            feed = gtfs_realtime_pb2.FeedMessage()
-            response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
-            feed.ParseFromString(response.read())
+            feed = download_feed(api_key)
             newly_arrived_trains = feed_processor.find_arrived_trains_in_feed(feed)
+            for train, train_time in newly_arrived_trains.items():
+                arrived_trains_db.insert({'train': train, 'time': train_time.isoformat()})
             feed_processor.print_arrived_trains(newly_arrived_trains)
         except DecodeError as e:
             print_with_time('Decode error!', e)

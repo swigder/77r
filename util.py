@@ -3,19 +3,19 @@ from datetime import datetime
 
 
 class ExpiringSet:
-    items = OrderedDict()
-
-    def __init__(self, expiration_seconds):
+    def __init__(self, expiration_seconds, now_provider=datetime):
         self.expiration_seconds = expiration_seconds
+        self.now_provider = now_provider
+        self.items = OrderedDict()
 
     def add(self, item):
-        self.items[item] = datetime.now()
+        self.items[item] = self.now_provider.now()
 
     def __contains__(self, item):
         def expired(insert_time):
             return (now - insert_time).seconds > self.expiration_seconds
 
-        now = datetime.now()
+        now = self.now_provider.now()
         for key, value in list(self.items.items()):
             if expired(value):
                 del self.items[key]
