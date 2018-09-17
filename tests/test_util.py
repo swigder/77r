@@ -1,7 +1,5 @@
 from time import sleep
 
-import pytest
-
 from util import ExpiringSet
 
 
