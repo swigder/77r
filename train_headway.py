@@ -5,7 +5,7 @@ from google.transit import gtfs_realtime_pb2
 
 from tinydb import TinyDB
 
-from mta_data_util import FeedPoller, generate_feed_filter
+from mta_data_util import FeedPoller, FeedFilter
 from util import ExpiringSet, print_with_time
 
 Train = namedtuple('Train', ['id', 'time'])
@@ -26,7 +26,7 @@ class TrainHeadwayFeedProcessor:
 
     @staticmethod
     def get_feed_filter():
-        return generate_feed_filter(lines='R', directions='N', process_vehicle=True)
+        return FeedFilter(lines='R', directions='N', process_vehicle=True)
 
     def find_arrived_trains_in_feed(self, feed):
         arrived_trains_in_feed = {}

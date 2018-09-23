@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from mta_data_util import FeedPoller, generate_feed_filter
+from mta_data_util import FeedPoller, FeedFilter
 
 R_77_N_STOP_NAME = 'R43N'
 R_77_N_STOP_NUMBER = 3
@@ -21,7 +21,7 @@ def pad(string, max_len=16):
 class TrainArrivalDisplayFeedProcessor:
     @staticmethod
     def get_feed_filter():
-        return generate_feed_filter(lines='R', directions='N', process_trip_update=True)
+        return FeedFilter(lines='R', directions='N', process_trip_update=True)
 
     @staticmethod
     def get_next_trains(feed):

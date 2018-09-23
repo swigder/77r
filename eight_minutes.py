@@ -2,7 +2,7 @@ from datetime import datetime
 
 from google.transit import gtfs_realtime_pb2
 
-from mta_data_util import FeedPoller, generate_feed_filter
+from mta_data_util import FeedPoller, FeedFilter
 from util import print_with_time
 
 R_77_N_STOP_NUMBER = 3
@@ -14,7 +14,7 @@ class EightMinutes:
         self.trains = {}
 
     def get_feed_filter(self):
-        return generate_feed_filter(lines='R', directions='N', process_vehicle=True)
+        return FeedFilter(lines='R', directions='N', process_vehicle=True)
 
     def process_feed(self, feed):
         for entity in feed:

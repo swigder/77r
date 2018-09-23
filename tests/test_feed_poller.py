@@ -16,4 +16,4 @@ class TestFeedPoller:
             with open(filepath) as f:
                 feed = gtfs_realtime_pb2.FeedMessage()
                 Merge(f.read(), feed)
-                self.feed_processor.process_feed(self.feed_filter(feed))
+                self.feed_processor.process_feed(self.feed_filter.filter(feed))

@@ -6,13 +6,12 @@ from urllib.error import URLError
 from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2
 
-from util import print_with_time
+from util import print_with_time, split_keys
 
 DEFAULT_POLL_FREQUENCY = 30.0  # seconds - feed is updated this often
 
 
-def is_northbound_r_trip(trip):
-    return trip.route_id == 'R' and trip.trip_id.endswith('N')
+TRAIN_LINE_TO_FEED_ID = split_keys({'NQRW': 16, 'BDFM': 21})
 
 
 def train_id_to_start_time(train_id):
@@ -21,24 +20,34 @@ def train_id_to_start_time(train_id):
     return datetime.time(hour=minutes_past_midnight // 60, minute=minutes_past_midnight % 60)
 
 
-def download_feed(api_key):
+def download_feed(api_key, line):
     feed = gtfs_realtime_pb2.FeedMessage()
-    response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id=16'.format(api_key))
+    response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id={}'
+                                      .format(api_key, TRAIN_LINE_TO_FEED_ID[line]))
     feed.ParseFromString(response.read())
     return feed
 
 
-def generate_feed_filter(lines, directions, process_vehicle=False, process_trip_update=False):
-    def trip_passes_filter(trip):
-        return trip.route_id in lines and trip.trip_id[-1] in directions
+class FeedFilter:
+    def __init__(self, lines, directions, process_vehicle=False, process_trip_update=False):
+        self.lines = lines
+        self.directions = directions
+        self.process_vehicle = process_vehicle
+        self.process_trip_update = process_trip_update
 
-    def feed_generator(feed):
+    def entity_passes_filter(self, entity):
+        if self.process_vehicle and entity.HasField('vehicle'):
+            trip = entity.vehicle.trip
+        elif self.process_trip_update and entity.HasField('trip_update'):
+            trip = entity.trip_update.trip
+        else:
+            return False
+        return trip.route_id in self.lines and trip.trip_id[-1] in self.directions
+
+    def filter(self, feed):
         for entity in feed.entity:
-            if process_vehicle and entity.HasField('vehicle') and trip_passes_filter(entity.vehicle.trip):
+            if self.entity_passes_filter(entity):
                 yield entity
-            elif process_trip_update and entity.HasField('trip_update') and trip_passes_filter(entity.trip_update.trip):
-                yield entity
-    return feed_generator
 
 
 class FeedPoller:
@@ -53,8 +62,8 @@ class FeedPoller:
 
         while True:
             try:
-                feed = download_feed(api_key)
-                feed = self.feed_filter(feed)
+                feed = download_feed(api_key, self.feed_filter.lines[0])  # todo handle multiple lines
+                feed = self.feed_filter.filter(feed)
                 self.feed_processor.process_feed(feed)
             except DecodeError as e:
                 print_with_time('Decode error!', e)

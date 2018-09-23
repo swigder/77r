@@ -24,6 +24,14 @@ class ExpiringSet:
         return item in self.items
 
 
+def split_keys(m_in):
+    m_out = {}
+    for k, v in m_in.items():
+        for i in k:
+            m_out[i] = v
+    return m_out
+
+
 def print_with_time(*msg):
     print(datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), *msg)
 
