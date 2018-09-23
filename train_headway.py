@@ -17,10 +17,16 @@ R_77_N_STOP_NUMBER = 3
 PATH_TO_DATA_STORE = 'arrived_trains.json'
 
 
-class FeedProcessor:
-    arrived_trains = OrderedDict()
-    # id unique per day, so remove ids after they can be presumed to have finished their run
-    alerted_trains = ExpiringSet(expiration_seconds=60 * 60 * 4)
+class TrainHeadwayFeedProcessor:
+    def __init__(self, arrived_train_db):
+        self.arrived_trains = OrderedDict()
+        # id unique per day, so remove ids after they can be presumed to have finished their run
+        self.alerted_trains = ExpiringSet(expiration_seconds=60 * 60 * 4)
+        self.arrived_train_db = arrived_train_db
+
+    @staticmethod
+    def get_feed_filter():
+        return generate_feed_filter(lines='R', directions='N', process_vehicle=True)
 
     def find_arrived_trains_in_feed(self, feed):
         arrived_trains_in_feed = {}
@@ -54,16 +60,13 @@ class FeedProcessor:
                                     'most recent train.'.format(key, value,
                                                                 (value - previous_arrival).seconds / 60))
 
-
-def process_feed(feed):
-    newly_arrived_trains = feed_processor.find_arrived_trains_in_feed(feed)
-    for train, train_time in newly_arrived_trains.items():
-        arrived_trains_db.insert({'train': train, 'time': train_time.isoformat()})
-    feed_processor.print_arrived_trains(newly_arrived_trains)
+    def process_feed(self, feed):
+        newly_arrived_trains = self.find_arrived_trains_in_feed(feed)
+        for train, train_time in newly_arrived_trains.items():
+            self.arrived_train_db.insert({'train': train, 'time': train_time.isoformat()})
+        self.print_arrived_trains(newly_arrived_trains)
 
 
 if __name__ == '__main__':
-    arrived_trains_db = TinyDB(PATH_TO_DATA_STORE)
-    feed_processor = FeedProcessor()
-    FeedPoller(process_feed, generate_feed_filter(lines='R', directions='N', process_trip_update=True)).start()
+    FeedPoller(TrainHeadwayFeedProcessor(TinyDB(PATH_TO_DATA_STORE))).start()
 

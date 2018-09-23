@@ -41,10 +41,10 @@ def generate_feed_filter(lines, directions, process_vehicle=False, process_trip_
 
 
 class FeedPoller:
-    def __init__(self, process_feed_fn, feed_filter=lambda x: x, poll_frequency=DEFAULT_POLL_FREQUENCY):
-        self.process_feed_fn = process_feed_fn
-        self.feed_filter = feed_filter
+    def __init__(self, feed_processor, poll_frequency=DEFAULT_POLL_FREQUENCY):
+        self.feed_processor = feed_processor
         self.poll_frequency = poll_frequency
+        self.feed_filter = self.feed_processor.get_feed_filter()
 
     def start(self):
         with open('api.key', 'r') as f:
@@ -53,7 +53,8 @@ class FeedPoller:
         while True:
             try:
                 feed = download_feed(api_key)
-                self.process_feed_fn(self.feed_filter(feed))
+                feed = self.feed_filter(feed)
+                self.feed_processor.process_feed(feed)
             except DecodeError as e:
                 print_with_time('Decode error!', e)
                 # todo print what the actual problem was
