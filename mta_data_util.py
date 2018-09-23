@@ -1,6 +1,7 @@
 import datetime
 import time
 import urllib.request
+from urllib.error import URLError
 
 from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2
@@ -60,6 +61,8 @@ class FeedPoller:
                 # todo print what the actual problem was
             except TimeoutError as e:
                 print_with_time('Timeout error!', e)
+            except URLError as e:
+                print_with_time('URLError error!', e)
 
             time.sleep(self.poll_frequency)
 
