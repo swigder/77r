@@ -11,7 +11,21 @@ from util import print_with_time, split_keys
 DEFAULT_POLL_FREQUENCY = 30.0  # seconds - feed is updated this often
 
 
-TRAIN_LINE_TO_FEED_ID = split_keys({'NQRW': 16, 'BDFM': 21})
+TRAIN_LINE_TO_FEED_ID = split_keys({
+    '123456S': 1,
+    'ACEH': 26,
+    'NQRW': 16,
+    'BDFM': 21,
+    'L': 2,
+    'I': 11,  # SIR
+    'G': 31,
+    'JZ': 36,
+    '7': 51
+})
+
+FEED_IDS = set(TRAIN_LINE_TO_FEED_ID.values())
+
+FEED_FORMAT = 'http://datamine.mta.info/mta_esi.php?key={}&feed_id={}'
 
 
 def train_id_to_start_time(train_id):
@@ -20,11 +34,20 @@ def train_id_to_start_time(train_id):
     return datetime.time(hour=minutes_past_midnight // 60, minute=minutes_past_midnight % 60)
 
 
+def download_raw_feed(api_key, feed_id):
+    response = urllib.request.urlopen(FEED_FORMAT.format(api_key, feed_id))
+    return response.read()
+
+
+def download_feed_by_id(api_key, feed_id):
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(download_raw_feed(api_key, feed_id))
+    return feed
+
+
 def download_feed(api_key, line):
     feed = gtfs_realtime_pb2.FeedMessage()
-    response = urllib.request.urlopen('http://datamine.mta.info/mta_esi.php?key={}&feed_id={}'
-                                      .format(api_key, TRAIN_LINE_TO_FEED_ID[line]))
-    feed.ParseFromString(response.read())
+    feed.ParseFromString(download_raw_feed(api_key, TRAIN_LINE_TO_FEED_ID[line]))
     return feed
 
 
